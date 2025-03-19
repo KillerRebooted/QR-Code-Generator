@@ -96,6 +96,24 @@ def convert_to_encoded_data(link):
 
     return integer_list, binary_string
 
+# Returns alignment pattern centers for a given version
+def get_alignment_positions(version):
+
+    alignment_positions = {
+        1: None,
+        2:  [18],
+        3:  [22],
+        4:  [26],
+        5:  [30],
+        6:  [34],
+        7:  [6, 22, 38],
+        8:  [6, 24, 42],
+        9:  [6, 26, 46],
+        10: [6, 28, 50],
+    }
+
+    return alignment_positions[version]
+
 # Get Data Length to get best ECC Length for given data
 def get_data_length(data, mode):
     if mode == "numeric":
@@ -222,15 +240,15 @@ def get_ecc_length(qr_version, ecc_level):
         raise ValueError("Invalid QR version or ECC level")
 
 # Version 2 QR Code Generator
-def version2(data, ecc_level=None, color_reversed=False):
+def version(data, version, ecc_level=None, color_reversed=False):
     global modified_boxes
 
     modified_boxes = set()
     
-    row_size = 25
+    size = 4*version + 17
 
-    bits = [0]*(row_size**2)
-    bit_boxes = [ctk.CTkButton(win, text="", height=30, width=30, border_color="black", border_width=grid, corner_radius=0) for button in range(row_size**2)]
+    bits = [0]*(size**2)
+    bit_boxes = [ctk.CTkButton(win, text="", height=30, width=30, border_color="black", border_width=grid, corner_radius=0) for button in range(size**2)]
 
     #Place Bit Boxes
     r, c = 1, 1
@@ -240,15 +258,15 @@ def version2(data, ecc_level=None, color_reversed=False):
 
         c += 1
 
-        if c == row_size+1:
+        if c == size+1:
             r += 1
             c = 1
 
-    # Alignment Patterns
+    # Finding Pattern
 
     locator1 = [(1, 7), (1, 7)]
-    locator2 = [(1, 7), (row_size-6, 25)]
-    locator3 = [(row_size-6, 25), (1, 7)]
+    locator2 = [(1, 7), (size-6, size)]
+    locator3 = [(size-6, size), (1, 7)]
 
     locators = [locator1, locator2, locator3]
 
@@ -262,38 +280,52 @@ def version2(data, ecc_level=None, color_reversed=False):
                 if ((r-locator[0][0]) in [1, 5] and ((c-locator[1][0]) not in [0, 6])) or ((c-locator[1][0]) in [1, 5] and ((r-locator[0][0]) not in [0, 6])):
                     continue
                 
-                bits[rc_to_index(r, c, row_size)] = 1
+                bits[rc_to_index(r, c, size)] = 1
 
-    locator4 = [(row_size-8, row_size-4), (row_size-8, row_size-4)]
-    locator = locator4
-    for r in range(locator[0][0], locator[0][1]+1):
-        for c in range(locator[1][0], locator[1][1]+1):
+    # Alignment Pattern
 
-            modified_boxes.add((r, c))
+    alignment_postions = get_alignment_positions(version)
 
-            if ((r-locator[0][0]) in [1, 3] and ((c-locator[1][0]) not in [0, 4])) or ((c-locator[1][0]) in [1, 3] and ((r-locator[0][0]) not in [0, 4])):
-                continue
-                
-            bits[rc_to_index(r, c, row_size)] = 1
+    if alignment_postions is not None:
 
-    locator5 = (9, row_size-8)
+        for x in alignment_postions:
+            for y in alignment_postions:
+                center = (x+1, y+1)
+                if center not in modified_boxes:
+                    locator4 = [(center[0]-2, center[0]+2), (center[1]-2, center[1]+2)] # (x+1-2, x+1-2+4), (y+1-2, y+1-2+4)
+
+                    locator = locator4
+                    for r in range(locator[0][0], locator[0][1]+1):
+                        for c in range(locator[1][0], locator[1][1]+1):
+
+                            modified_boxes.add((r, c))
+
+                            if ((r-locator[0][0]) in [1, 3] and ((c-locator[1][0]) not in [0, 4])) or ((c-locator[1][0]) in [1, 3] and ((r-locator[0][0]) not in [0, 4])):
+                                continue
+                                
+                            bits[rc_to_index(r, c, size)] = 1
+
+    # Timing Pattern
+
+    locator5 = (9, size-8)
     locator = locator5
     for r in range(locator[0], locator[1]+1):
         modified_boxes.add((r, c))
 
         c = 7
         if (r-9)%2 == 0:
-            bits[rc_to_index(r, c, row_size)] = 1
+            bits[rc_to_index(r, c, size)] = 1
+    
     for c in range(locator[0], locator[1]+1):
         modified_boxes.add((r, c))
 
         r = 7
         if (c-9)%2 == 0:
-            bits[rc_to_index(r, c, row_size)] = 1
+            bits[rc_to_index(r, c, size)] = 1
 
     # Useless Pixel
-    modified_boxes.add((row_size-7, 9, row_size))
-    bits[rc_to_index(row_size-7, 9, row_size)] = 1
+    modified_boxes.add((size-7, 9, size))
+    bits[rc_to_index(size-7, 9, size)] = 1
 
     # Set Encoding
     numeric = ("0001", "numeric")
@@ -307,44 +339,44 @@ def version2(data, ecc_level=None, color_reversed=False):
     else:
         type = binary
     
-    bits = data_to_qrcode(bits, row_size, type[0])
+    bits = data_to_qrcode(bits, size, type[0])
 
     # Specify Length
 
     length = f"{len(data):08b}"
-    bits = data_to_qrcode(bits, row_size, length)
+    bits = data_to_qrcode(bits, size, length)
     
     # Reserved Space for Format Strips
 
     for r in range(1, 9+1):
         for c in range(1, 9+1):
             modified_boxes.add((r, c))
-        for c in range(row_size-7, row_size+1):
+        for c in range(size-7, size+1):
             modified_boxes.add((r, c))
 
-    for r in range(row_size-7, row_size+1):
+    for r in range(size-7, size+1):
         for c in range(1, 9+1):
             modified_boxes.add((r, c))
 
     # Encode Data
 
     integer_data, binary_data = convert_to_encoded_data(data)
-    bits = data_to_qrcode(bits, row_size, binary_data)
+    bits = data_to_qrcode(bits, size, binary_data)
 
     # Add 4 Blank Bits to represent end of Message/Link
 
     padding_data = "0000"
-    bits = data_to_qrcode(bits, row_size, padding_data)
+    bits = data_to_qrcode(bits, size, padding_data)
 
     # Add Error Correction Bits to the encoded data
 
     # Get appropriate ECC Length
     data_size = get_data_length(data, type[1])
     if ecc_level == None:
-        ecc_level = get_appropriate_ecc_level(2, type[1], data_size)[1]
+        ecc_level = get_appropriate_ecc_level(version, type[1], data_size)[1]
         if ecc_level == None:
             raise ValueError("Inappropriate QR Version for data of this length.")
-    ecc_length = get_ecc_length(2, ecc_level)
+    ecc_length = get_ecc_length(version, ecc_level)
     
     # Initialize Reed-Solomon codec
     rs = reedsolo.RSCodec(ecc_length)
@@ -356,7 +388,7 @@ def version2(data, ecc_level=None, color_reversed=False):
     ecc_bytes = encoded_data[-ecc_length:]
     binary_data = "".join(f"{x:08b}" for x in ecc_bytes)
 
-    bits = data_to_qrcode(bits, row_size, binary_data)
+    bits = data_to_qrcode(bits, size, binary_data)
 
     update_qrcode(bits, bit_boxes, color_reversed)
 
@@ -369,7 +401,7 @@ def main():
 
     link = "www.youtube.com/veritasium"
 
-    version2(link, color_reversed=False)
+    version(data=link, version=2, color_reversed=False)
 
     win.mainloop()
 
